@@ -92,13 +92,13 @@ namespace ORB_SLAM3
             for (int u = -d; u <= d; ++u)
             {
                 int val_plus = center[u + v*step], val_minus = center[u - v*step];
-                v_sum += (val_plus - val_minus);
+                v_sum += (val_plus - val_minus);        //这样算真的比较快吗？
                 m_10 += u * (val_plus + val_minus);
             }
             m_01 += v * v_sum;
         }
 
-        return fastAtan2((float)m_01, (float)m_10);
+        return fastAtan2((float)m_01, (float)m_10);   //精度0.3度
     }
 
 
@@ -113,12 +113,16 @@ namespace ORB_SLAM3
         const uchar* center = &img.at<uchar>(cvRound(kpt.pt.y), cvRound(kpt.pt.x));
         const int step = (int)img.step;
 
+		//先将pattern的坐标旋转到特征点的主方向上来，
+		//pattern中的y是行索引增大的方向，x是列索引增大的方向
+		//    [y_new] = [cos(theta),  sin(theta)][y_old]
+		//    [x_new]   [-sin(theta), cos(theta)][x_old]
 #define GET_VALUE(idx) \
         center[cvRound(pattern[idx].x*b + pattern[idx].y*a)*step + \
                cvRound(pattern[idx].x*a - pattern[idx].y*b)]
 
 
-        for (int i = 0; i < 32; ++i, pattern += 16)
+        for (int i = 0; i < 32; ++i, pattern += 16)  //共256个二进制表述
         {
             int t0, t1, val;
             t0 = GET_VALUE(0); t1 = GET_VALUE(1);
