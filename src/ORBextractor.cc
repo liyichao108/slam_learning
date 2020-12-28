@@ -436,6 +436,8 @@ namespace ORB_SLAM3
 
         mnFeaturesPerLevel.resize(nlevels);
         float factor = 1.0f / scaleFactor;
+		
+		//按比例分配各金字塔层次需要提取的特征点数量
         float nDesiredFeaturesPerScale = nfeatures*(1 - factor)/(1 - (float)pow((double)factor, (double)nlevels));
 
         int sumFeatures = 0;
@@ -1069,14 +1071,19 @@ namespace ORB_SLAM3
             computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr((int)i));
     }
 
+	//在本版本的实现中，mask会被忽略
+	//InputArray， outputArray 为接口类，可以实例化为Mat、Mat_<T>、
+	//Mat_<T, m, n>、vector<T>、vector<vector<T>>、vector<Mat>
+	
     int ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
                                   OutputArray _descriptors, std::vector<int> &vLappingArea)
     {
         //cout << "[ORBextractor]: Max Features: " << nfeatures << endl;
         if(_image.empty())
             return -1;
-
-        Mat image = _image.getMat();
+		
+		//_InputArray::getMat()方法构造一个数组（矩阵）的信息头（这不会拷贝数据）
+        Mat image = _image.getMat(); 
         assert(image.type() == CV_8UC1 );
 
         // Pre-compute the scale pyramid
@@ -1095,6 +1102,7 @@ namespace ORB_SLAM3
             _descriptors.release();
         else
         {
+			//在调用outputArray.getMat()前一定要使用.creat()分配内存。
             _descriptors.create(nkeypoints, 32, CV_8U);
             descriptors = _descriptors.getMat();
         }
@@ -1169,7 +1177,9 @@ namespace ORB_SLAM3
                 resize(mvImagePyramid[level-1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
 
                 copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,
-                               BORDER_REFLECT_101+BORDER_ISOLATED);
+                               BORDER_REFLECT_101+BORDER_ISOLATED); 
+				// 这个操作是什么意思，mvImagePyramid[level]是temp的去边界子区域，把mvImagePyramid[level]扩充边界后，再赋值给自己？
+				// 然而从始至终也没见使用到边界，所以加的边界到底有啥用？
             }
             else
             {
