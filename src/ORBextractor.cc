@@ -766,6 +766,8 @@ namespace ORB_SLAM3
         return vResultKeys;
     }
 
+	//在该函数中，对金字塔的每一层，将图片分割成若干个30*30像素的子块，在子块上检测FAST角点
+	//这种方法保证了角点分布的均匀性
     void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoints)
     {
         allKeypoints.resize(nlevels);
@@ -1072,7 +1074,7 @@ namespace ORB_SLAM3
     }
 
 	//在本版本的实现中，mask会被忽略
-	//InputArray， outputArray 为接口类，可以实例化为Mat、Mat_<T>、
+	//InputArray， outputArray 为接口类，可以具体化为Mat、Mat_<T>、
 	//Mat_<T, m, n>、vector<T>、vector<vector<T>>、vector<Mat>
 	
     int ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
@@ -1109,7 +1111,7 @@ namespace ORB_SLAM3
 
         //_keypoints.clear();
         //_keypoints.reserve(nkeypoints);
-        _keypoints = vector<cv::KeyPoint>(nkeypoints);
+        _keypoints = vector<cv::KeyPoint>(nkeypoints); //目前看没有用
 
         int offset = 0;
         //Modified for speeding up stereo fisheye matching
@@ -1180,6 +1182,7 @@ namespace ORB_SLAM3
                                BORDER_REFLECT_101+BORDER_ISOLATED); 
 				// 这个操作是什么意思，mvImagePyramid[level]是temp的去边界子区域，把mvImagePyramid[level]扩充边界后，再赋值给自己？
 				// 然而从始至终也没见使用到边界，所以加的边界到底有啥用？
+				// 加上边界后，提取角点时，可以尽量使用所有的像素信息，同时避免边界区域像素突变造成的干扰
             }
             else
             {

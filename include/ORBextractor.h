@@ -92,15 +92,15 @@ protected:
     void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
     std::vector<cv::Point> pattern;
 
-    int nfeatures;
-    double scaleFactor;
+    int nfeatures; //金字塔上总共需要提取的特征点数
+    double scaleFactor;    
     int nlevels;
-    int iniThFAST;
-    int minThFAST;
+    int iniThFAST;   //提取fast角点的阈值先使用iniTh，提取的角点不够多时，再使用
+    int minThFAST;   //minTh来提取角点；
 
     std::vector<int> mnFeaturesPerLevel;
 
-    std::vector<int> umax;
+    std::vector<int> umax; //圆形子块的1/4边界
 
     std::vector<float> mvScaleFactor;
     std::vector<float> mvInvScaleFactor;    

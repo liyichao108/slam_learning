@@ -1,0 +1,163 @@
+#pragma once
+#ifndef BACKEND_H
+#define BACKEND_H
+
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
+//#include <sophus/se3.hpp>
+//#include <sophus/so3.hpp>
+
+#include <opencv2/core/core.hpp>
+#include <ceres/ceres.h>
+
+#include <limits>
+
+
+class MatchPointFile {
+public:
+	typedef std::vector<std::vector<double>> MatchPointsType;
+	
+	explicit MatchPointFile(std::string &path) :
+		mFilePath(path) {}
+	
+	void load();
+	
+	MatchPointsType mPs;
+private:
+	std::string mFilePath;	
+};
+
+
+template<typename T>
+inline T DotProduct(const T x[3], const T y[3]) {
+    return (x[0] * y[0] + x[1] * y[1] + x[2] * y[2]);
+}
+
+template<typename T>
+inline void CrossProduct(const T x[3], const T y[3], T result[3]) {
+    result[0] = x[1] * y[2] - x[2] * y[1];
+    result[1] = x[2] * y[0] - x[0] * y[2];
+    result[2] = x[0] * y[1] - x[1] * y[0];
+}
+
+template<typename T>
+inline void AngleAxisRotatePoint(const T angle_axis[3], const T pt[3], T result[3]) {
+    const T theta2 = DotProduct(angle_axis, angle_axis);
+    if (theta2 > T(std::numeric_limits<double>::epsilon())) {
+        // Away from zero, use the rodriguez formula
+        //
+        //   result = pt costheta +
+        //            (w x pt) * sintheta +
+        //            w (w . pt) (1 - costheta)
+        //
+        // We want to be careful to only evaluate the square root if the
+        // norm of the angle_axis vector is greater than zero. Otherwise
+        // we get a division by zero.
+        //
+        const T theta = sqrt(theta2);
+        const T costheta = cos(theta);
+        const T sintheta = sin(theta);
+        const T theta_inverse = 1.0 / theta;
+
+        const T w[3] = {angle_axis[0] * theta_inverse,
+                        angle_axis[1] * theta_inverse,
+                        angle_axis[2] * theta_inverse};
+
+        // Explicitly inlined evaluation of the cross product for
+        // performance reasons.
+        /*const T w_cross_pt[3] = { w[1] * pt[2] - w[2] * pt[1],
+                                  w[2] * pt[0] - w[0] * pt[2],
+                                  w[0] * pt[1] - w[1] * pt[0] };*/
+        T w_cross_pt[3];
+        CrossProduct(w, pt, w_cross_pt);
+
+        const T tmp = DotProduct(w, pt) * (T(1.0) - costheta);
+        //    (w[0] * pt[0] + w[1] * pt[1] + w[2] * pt[2]) * (T(1.0) - costheta);
+
+        result[0] = pt[0] * costheta + w_cross_pt[0] * sintheta + w[0] * tmp;
+        result[1] = pt[1] * costheta + w_cross_pt[1] * sintheta + w[1] * tmp;
+        result[2] = pt[2] * costheta + w_cross_pt[2] * sintheta + w[2] * tmp;
+    } else {
+        // Near zero, the first order Taylor approximation of the rotation
+        // matrix R corresponding to a vector w and angle w is
+        //
+        //   R = I + hat(w) * sin(theta)
+        //
+        // But sintheta ~ theta and theta * w = angle_axis, which gives us
+        //
+        //  R = I + hat(w)
+        //
+        // and actually performing multiplication with the point pt, gives us
+        // R * pt = pt + w x pt.
+        //
+        // Switching to the Taylor expansion near zero provides meaningful
+        // derivatives when evaluated using Jets.
+        //
+        // Explicitly inlined evaluation of the cross product for
+        // performance reasons.
+        /*const T w_cross_pt[3] = { angle_axis[1] * pt[2] - angle_axis[2] * pt[1],
+                                  angle_axis[2] * pt[0] - angle_axis[0] * pt[2],
+                                  angle_axis[0] * pt[1] - angle_axis[1] * pt[0] };*/
+        T w_cross_pt[3];
+        CrossProduct(angle_axis, pt, w_cross_pt);
+
+        result[0] = pt[0] + w_cross_pt[0];
+        result[1] = pt[1] + w_cross_pt[1];
+        result[2] = pt[2] + w_cross_pt[2];
+    }
+}
+
+
+class ReprojectionError {
+public:
+	ReprojectionError(double u, double v, double radar_x, 
+		double radar_y) : mu(u), mv(v) mRadar_x(radar_x), 
+		mRadar_y(radar_y) {}
+	
+	template<typename T>
+	bool operator() (const T *cameraPara, T *residuals) const {
+		T prediction[2];
+		CamProjection(cameraPara, mRadar_x, mRadar_y, prediction);
+		residuals[0] = prediction[0] - T(mRadar_x);
+		residuals[1] = prediction[1] - T(mRadar_y);
+		
+		return true;
+	}
+	
+	template<typename T>
+	static inline bool CamProjection(const T *cameraPara, 
+		const T mRadar_x, const T mRadar_y, T *prediction) {
+		const T pw[3] = {mRadar_x, -1, mRadar_y};
+		T p[3];
+		AngleAxisRotatePoint(camera, pw, p);
+		
+		p[0] += camera[3];
+		p[1] += camera[4];
+		p[2] += camera[5];
+		
+		T xp = -p[0] / p[2];
+		T yp = -p[1] / p[2];
+		
+		const T &focal = camera[6];
+		prediction[0] = focal * xp;
+		prediction[1] = focal * yp;
+		
+		return true;
+	}
+
+	static ceres::CostFunction* Create(const double x, const double y) {
+		return (new ceres::AutoDiffCostFunction<ReprojectionError, 2, 7>(
+			new ReprojectionError(x, y)));
+private:
+	double mu;
+	double mv;
+	double mRadar_x;
+	double mRadar_y;
+}
+#endif
